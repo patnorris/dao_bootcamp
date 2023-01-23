@@ -8,41 +8,52 @@ import Error "mo:base/Error";
 import ICRaw "mo:base/ExperimentalInternetComputer";
 import List "mo:base/List";
 import Time "mo:base/Time";
+import Array "mo:base/Array";
+
 import Types "./Types";
+import ICRC1 "./ICRC-1";
+import Webpage "./Webpage";
+import Spaces "./Spaces";
 
 shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
     public shared query (msg) func whoami() : async Principal {
         return msg.caller;
     };
 
-    stable var accounts = Types.accounts_fromArray(init.accounts); //TODO: create account type
+    stable var accounts = Types.accounts_fromArray(init.accounts);
     stable var proposals = Types.proposals_fromArray(init.proposals);
     stable var next_proposal_id : Nat = 0;
     stable var system_params : Types.SystemParams = init.system_params;
 
-    //TODO: integrate MBT
+    // token used by DAO (only updateable by proposal)
+    stable var token_canister_principal : Text = "db3eq-6iaaa-aaaah-abz6a-cai"; // points to MBT canister
+    let token_canister : ICRC1.Self = actor (token_canister_principal);
 
-    //TODO: make token used by DAO updateable by proposal
-    stable var token_canister_principal : Principal = "db3eq-6iaaa-aaaah-abz6a-cai";
-    let token_canister : actor { receive_message : (Text) -> async Nat } = actor (token_canister_principal);
+    stable var min_token_requirement_to_submit_proposal : Nat = 10000; // only updateable by proposal
 
-    stable var community_funds : Nat = 0; //TODO: Define what can be done with community_funds and potentially implement related functions
-    stable var variable_fee_percentage : Nat = 10; // in %
-
+    // stable var community_funds : Nat = 0;
+    // stable var variable_fee_percentage : Nat = 10; // in %
+    //let n = 21600; // execute heartbeat every 12h
+    let n = 5;
+    stable var count = 0;
     system func heartbeat() : async () {
-        await execute_accepted_proposals();
+        if (count % n == 0) {
+            count := 0;
+            await execute_accepted_proposals();
+        };
+        count += 1;
     };
 
-    func account_get(id : Principal) : ?Types.Tokens = Trie.get(accounts, Types.account_key(id), Principal.equal);
-    func account_put(id : Principal, tokens : Types.Tokens) {
-        accounts := Trie.put(accounts, Types.account_key(id), Principal.equal, tokens).0;
+    func account_get(id : Principal) : ?Types.User = Trie.get(accounts, Types.account_key(id), Principal.equal);
+    func account_put(id : Principal, user : Types.User) {
+        accounts := Trie.put(accounts, Types.account_key(id), Principal.equal, user).0;
     };
     func proposal_get(id : Nat) : ?Types.Proposal = Trie.get(proposals, Types.proposal_key(id), Nat.equal);
     func proposal_put(id : Nat, proposal : Types.Proposal) {
         proposals := Trie.put(proposals, Types.proposal_key(id), Nat.equal, proposal).0;
     };
 
-    /// Transfer tokens from the caller's account to another account
+    /* /// Transfer tokens from the caller's account to another account
     public shared({caller}) func transfer(transfer: Types.TransferArgs) : async Types.Result<(), Text> {
         switch (account_get caller) {
         case null { #err "Caller needs an account to transfer funds" };
@@ -70,18 +81,41 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
             };
         };
       };
+    }; */
+
+    /// Create account for the caller
+    public shared ({caller}) func create_account(username : Text) : async Types.Result<Types.Account, Text> {
+        switch (account_get(caller)) {
+        case null { 
+            account_put(caller, { user_name = username; });
+            switch (account_get(caller)) {
+            case null { return #err("Could not create account. Please try again."); };
+            case (?user) { return #ok({ owner = caller; user = user}); };
+            };
+        };
+        case (?account) { return #err("You already have an account."); };
+        };
+    };
+
+    /// Return the username of the caller
+    public shared query ({caller}) func get_username() : async ?Text {
+        switch (account_get(caller)) {
+        case null { return null; };
+        case (?user) { return ?user.user_name; };
+        };
     };
 
     /// Return the account balance of the caller
-    public query({caller}) func account_balance() : async Types.Tokens {
-        Option.get(account_get(caller), Types.zeroToken)
+    public shared ({caller}) func account_balance() : async Nat {
+        let caller_balance = await token_canister.icrc1_balance_of({owner = caller; subaccount = null});
+        return caller_balance;
     };
 
     /// Lists all accounts
     public query func list_accounts() : async [Types.Account] {
         Iter.toArray(
           Iter.map(Trie.iter(accounts),
-                   func ((owner : Principal, tokens : Types.Tokens)) : Types.Account = { owner; tokens }))
+                   func ((owner : Principal, user : Types.User)) : Types.Account = { owner; user }))
     };
 
     /// Submit a proposal
@@ -89,24 +123,35 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
     /// A proposal contains a canister ID, method name and method args. If enough users
     /// vote "yes" on the proposal, the given method will be called with the given method
     /// args on the given canister.
-    public shared({caller}) func submit_proposal(payload: Types.ProposalPayload) : async Types.Result<Nat, Text> {
-        Result.chain(deduct_proposal_submission_deposit(caller), func (()) : Types.Result<Nat, Text> {
-            let proposal_id = next_proposal_id;
-            next_proposal_id += 1;
+    public shared({caller}) func submit_proposal(payload: Types.ProposalPayload, proposalText : Text) : async Types.Result<Nat, Text> {
+        // Caller must have an account
+        switch (account_get(caller)) {
+        case null { #err("You need an account to submit a proposal") };
+        case (?account) {
+            // Check that caller has min required number of tokens on token_canister
+            let caller_balance = await token_canister.icrc1_balance_of({owner = caller; subaccount = null});
+            if (caller_balance >= min_token_requirement_to_submit_proposal) {
+                let proposal_id = next_proposal_id;
+                next_proposal_id += 1;
 
-            let proposal : Types.Proposal = {
-                id = proposal_id;
-                timestamp = Time.now();
-                proposer = caller;
-                payload;
-                state = #open;
-                votes_yes = Types.zeroToken;
-                votes_no = Types.zeroToken;
-                voters = List.nil();
+                let proposal : Types.Proposal = {
+                    id = proposal_id;
+                    timestamp = Time.now();
+                    proposer = caller;
+                    payload;
+                    state = #open;
+                    votes_yes = Types.zeroToken;
+                    votes_no = Types.zeroToken;
+                    voters = List.nil();
+                    proposal_text = proposalText;
+                };
+                proposal_put(proposal_id, proposal);
+                #ok(proposal_id)
+            } else {
+                #err("You need at least " # debug_show(min_token_requirement_to_submit_proposal) # " tokens to submit a proposal")
             };
-            proposal_put(proposal_id, proposal);
-            #ok(proposal_id)
-        })
+        };
+        };
     };
 
     /// Return the proposal with the given ID, if one exists
@@ -118,7 +163,17 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
     public query func list_proposals() : async [Types.Proposal] {
         Iter.toArray(Iter.map(Trie.iter(proposals), func (kv : (Nat, Types.Proposal)) : Types.Proposal = kv.1))
     };
-    //TODO: potentially add func to retrieve open proposals
+
+    // Retrieve open proposals
+    public query func list_open_proposals() : async [Types.Proposal] {
+        func only_open(kv : (Nat, Types.Proposal)) : Bool {
+            if (kv.1.state == #open) {
+                return true;
+            };
+            return false;
+        };
+        Iter.toArray(Iter.map(Iter.filter(Trie.iter(proposals), only_open), func (kv : (Nat, Types.Proposal)) : Types.Proposal = kv.1))
+    };
 
     // Vote on an open proposal
     public shared({caller}) func vote(args: Types.VoteArgs) : async Types.Result<Types.ProposalState, Text> {
@@ -129,35 +184,30 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
                 if (state != #open) {
                     return #err("Proposal " # debug_show(args.proposal_id) # " is not open for voting");
                 };
+
                 switch (account_get(caller)) {
-                case null { return #err("Caller does not have any tokens to vote with") };
-                case (?{ amount_e8s = voting_tokens }) {
+                case null { return #err("You need an account to vote"); };
+                case (?account) {
+                    let caller_balance = await token_canister.icrc1_balance_of({owner = caller; subaccount = null});
+                    if (caller_balance > 0) {
                         if (List.some(proposal.voters, func (e : Principal) : Bool = e == caller)) {
                             return #err("Already voted");
                         };
-                        
+
                         var votes_yes = proposal.votes_yes.amount_e8s;
                         var votes_no = proposal.votes_no.amount_e8s;
                         switch (args.vote) {
-                        case (#yes) { votes_yes += voting_tokens };
-                        case (#no) { votes_no += voting_tokens };
+                        case (#yes) { votes_yes += caller_balance };
+                        case (#no) { votes_no += caller_balance };
                         };
                         let voters = List.push(caller, proposal.voters);
 
                         if (votes_yes >= system_params.proposal_vote_threshold.amount_e8s) {
-                            // Refund the proposal deposit when the proposal is accepted
-                            ignore do ? {
-                                let account = account_get(proposal.proposer)!;
-                                let refunded = account.amount_e8s + system_params.proposal_submission_deposit.amount_e8s;
-                                account_put(proposal.proposer, { amount_e8s = refunded });
-                            };
                             state := #accepted;
                         };
                         
                         if (votes_no >= system_params.proposal_vote_threshold.amount_e8s) {
                             state := #rejected;
-                            // Add deposit to community fund
-                            community_funds += system_params.proposal_submission_deposit.amount_e8s;
                         };
 
                         let updated_proposal = {
@@ -169,9 +219,13 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
                             timestamp = proposal.timestamp;
                             proposer = proposal.proposer;
                             payload = proposal.payload;
+                            proposal_text = proposal.proposal_text;
                         };
                         proposal_put(args.proposal_id, updated_proposal);
+                    } else {
+                        return #err("You don't have any tokens to vote with");
                     };
+                };
                 };
                 #ok(state)
             };
@@ -184,7 +238,6 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
     /// Update system params
     ///
     /// Only callable via proposal execution
-    //TODO: potentially require more yes votes to execute
     public shared({caller}) func update_system_params(payload: Types.UpdateSystemParamsPayload) : async () {
         if (caller != Principal.fromActor(Self)) {
             return;
@@ -196,7 +249,35 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
         };
     };
 
-    /// Deduct the proposal submission deposit from the caller's account
+    /// Update token Dao uses
+    ///
+    /// Only callable via proposal execution
+    public shared({caller}) func update_token_canister(payload: Text) : async () {
+        if (caller != Principal.fromActor(Self)) {
+            return;
+        };
+        try {
+            let principal = Principal.fromText(payload);
+        }
+        catch (e) { return; }; 
+        token_canister_principal := payload;    
+    };
+
+    /// Update min number of tokens required to submit proposal
+    ///
+    /// Only callable via proposal execution
+    public shared({caller}) func update_token_requirements(payload: {variable : Text; requirement : Nat}) : async () {
+        if (caller != Principal.fromActor(Self)) {
+            return;
+        };
+        if (payload.variable == "min_token_requirement_to_submit_proposal") {
+            min_token_requirement_to_submit_proposal := payload.requirement;
+        } else {
+            return;
+        };   
+    };
+
+    /* /// Deduct the proposal submission deposit from the caller's account
     func deduct_proposal_submission_deposit(caller : Principal) : Types.Result<(), Text> {
         switch (account_get(caller)) {
         case null { #err "Caller needs an account to submit a proposal" };
@@ -211,7 +292,7 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
                 };
             };
         };
-    };
+    }; */
 
     /// Execute all accepted proposals
     func execute_accepted_proposals() : async () {
@@ -233,8 +314,32 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
     func execute_proposal(proposal: Types.Proposal) : async Types.Result<(), Text> {
         try {
             let payload = proposal.payload;
-            ignore await ICRaw.call(payload.canister_id, payload.method, payload.message);
-            #ok
+            if (payload.canister_id == Principal.fromText("vee64-zyaaa-aaaai-acpta-cai")) {
+                if (payload.method == "createSpace") {
+                    let spaces_canister : Spaces.Self = actor ("vee64-zyaaa-aaaai-acpta-cai");
+                    //ignore await ICRaw.call(payload.canister_id, payload.method, to_candid(payload.message));
+                    ignore await spaces_canister.createSpace(proposal.proposal_text);
+                    #ok
+                } else if (payload.method == "updateUserSpace") {
+                    #err("Not supported yet")
+                    // TODO
+                    /* let spaces_canister : Spaces.Self = actor ("vee64-zyaaa-aaaai-acpta-cai");
+                    ignore await spaces_canister.updateUserSpace(proposal.proposal_text);
+                    #ok */
+                } else {
+                    #err("Not supported")
+                };
+            } else if (payload.canister_id == Principal.fromText("uajro-ayaaa-aaaai-acpva-cai")) {
+                if (payload.method == "change_dao_text") {
+                    let webpage_canister : Webpage.Self = actor ("uajro-ayaaa-aaaai-acpva-cai");
+                    ignore await webpage_canister.change_dao_text(proposal.proposal_text);
+                    #ok
+                } else {
+                    #err("Not supported")
+                };
+            } else {
+                #err("Not supported")
+            };
         }
         catch (e) { #err(Error.message e) };
     };
@@ -249,7 +354,57 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
             timestamp = proposal.timestamp;
             proposer = proposal.proposer;
             payload = proposal.payload;
+            proposal_text = proposal.proposal_text;
         };
         proposal_put(proposal.id, updated);
+    };
+
+    /// Call whitelisted external canister functions (not needing accepted proposal)
+    stable let whitelisted_canisters = ["vee64-zyaaa-aaaai-acpta-cai", "uajro-ayaaa-aaaai-acpva-cai"];
+    stable let whitelisted_methods = ["getCallerSpaces", "getSpace", "get_dao_text"];
+    public shared({caller}) func call_spaces_canister(payload: Types.ProposalPayload) : async Types.Result<?([Types.Nft]), Text> {
+        switch (account_get(caller)) {
+        case null { return #err("Not allowed"); };
+        case (?account) {
+            switch(Array.find<Text>(whitelisted_canisters, func x = Principal.fromText(x) == payload.canister_id)){
+            case null { return #err("Not allowed"); };
+            case (?whitelisted_canister) {
+                switch(Array.find<Text>(whitelisted_methods, func x = x == payload.method)){
+                case null { return #err("Not allowed"); };
+                case (?whitelisted_method) {
+                    try {
+                        let result = await ICRaw.call(payload.canister_id, payload.method, to_candid(payload.message));
+                        #ok(from_candid(result))
+                    }
+                    catch (e) { #err(Error.message e) };
+                };
+                };
+            };
+            };
+        };
+        };
+    };
+
+    public shared({caller}) func call_webpage_canister(payload: Types.ProposalPayload) : async Types.Result<?(Text), Text> {
+        switch (account_get(caller)) {
+        case null { return #err("Not allowed"); };
+        case (?account) {
+            switch(Array.find<Text>(whitelisted_canisters, func x = Principal.fromText(x) == payload.canister_id)){
+            case null { return #err("Not allowed"); };
+            case (?whitelisted_canister) {
+                switch(Array.find<Text>(whitelisted_methods, func x = x == payload.method)){
+                case null { return #err("Not allowed"); };
+                case (?whitelisted_method) {
+                    try {
+                        let result = await ICRaw.call(payload.canister_id, payload.method, to_candid(payload.message));
+                        #ok(from_candid(result))
+                    }
+                    catch (e) { #err(Error.message e) };
+                };
+                };
+            };
+            };
+        };
+        };
     };
 };

@@ -14,8 +14,11 @@ actor {
         return dao_text;
     };
 
-    public func change_dao_text(updatedDaoText : Text) : async Text {
-        // TODO: add dao_backend as only controller
+    public shared({caller}) func change_dao_text(updatedDaoText : Text) : async Text {
+        // dao_backend is only controller (and may execute the function after a proposal passes)
+        if (caller != Principal.fromText("ujk2s-wqaaa-aaaai-acpuq-cai")) {
+            return "Only dao_backend may update";
+        };
 
         dao_text := updatedDaoText;
         return dao_text;
@@ -23,9 +26,19 @@ actor {
 
 // HTTP interface
   public query func http_request(request : HTTP.Request) : async HTTP.Response {
+    return {
+      upgrade = ?true; // ← If this is set, the request will be sent to http_request_update()
+      status_code = 200;
+      headers = [ ("content-type", "text/plain") ];
+      body = "It does not work";
+      streaming_strategy = null;
+    };
+  };
+
+  public shared func http_request_update(request : HTTP.Request) : async HTTP.Response {
     if (Text.contains(request.url, #text("daotext"))) {
       return {
-        upgrade = false;
+        upgrade = ?false;
         status_code = 200;
         headers = [ ("content-type", "text/plain") ];
         body = Text.encodeUtf8(dao_text);
@@ -40,13 +53,14 @@ actor {
         streaming_strategy = null;
       }; */
       return {
-        upgrade = false;
+        upgrade = ?false;
         status_code = 200;
         headers = [ ("content-type", "text/plain") ];
         body = Text.encodeUtf8(dao_text);
         streaming_strategy = null;
       };
     };
+    
   };
 
 };

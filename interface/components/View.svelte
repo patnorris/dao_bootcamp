@@ -8,16 +8,16 @@
     if (!dao) {
       return
     }
-    let res = await dao.get_all_proposals()
-    console.log("Proposals", res)
+    //let res = await dao.list_open_proposals()
+    let res = await dao.list_proposals()
     return res
   }
-  let promise =  get_all_proposals()
+  let promise = get_all_proposals()
 </script>
 
 {#if $principal}
   {#await promise}
-    <p>Loading...</p>
+    <p>Loading Proposals...</p>
   {:then proposals}
     <div id="proposals">
       <h1>Proposals</h1>

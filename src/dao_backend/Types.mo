@@ -4,10 +4,15 @@ import Int "mo:base/Int";
 import Nat "mo:base/Nat";
 import List "mo:base/List";
 import Principal "mo:base/Principal";
+import AssocList "mo:base/AssocList";
+import Text "mo:base/Text";
 
 module {
   public type Result<T, E> = Result.Result<T, E>;
-  public type Account = { owner : Principal; tokens : Tokens };
+  public type Account = { owner : Principal; user : User };
+  public type User = {
+    user_name : Text;
+  };
   public type Proposal = {
     id : Nat;
     votes_no : Tokens;
@@ -17,11 +22,16 @@ module {
     proposer : Principal;
     votes_yes : Tokens;
     payload : ProposalPayload;
+    proposal_text : Text;
   };
   public type ProposalPayload = {
     method : Text;
     canister_id : Principal;
     message : Blob;
+  };
+  public type MethodPayload = {
+    method : Text;
+    canister_id : Principal;
   };
   public type ProposalState = {
       // A failure occurred while executing the proposal
@@ -66,10 +76,10 @@ module {
 
   public func proposal_key(t: Nat) : Trie.Key<Nat> = { key = t; hash = Int.hash t };
   public func account_key(t: Principal) : Trie.Key<Principal> = { key = t; hash = Principal.hash t };
-  public func accounts_fromArray(arr: [Account]) : Trie.Trie<Principal, Tokens> {
-      var s = Trie.empty<Principal, Tokens>();
+  public func accounts_fromArray(arr: [Account]) : Trie.Trie<Principal, User> {
+      var s = Trie.empty<Principal, User>();
       for (account in arr.vals()) {
-          s := Trie.put(s, account_key(account.owner), Principal.equal, account.tokens).0;
+          s := Trie.put(s, account_key(account.owner), Principal.equal, account.user).0;
       };
       s
   };
@@ -83,4 +93,43 @@ module {
   
   public let oneToken = { amount_e8s = 10_000_000 };
   public let zeroToken = { amount_e8s = 0 };  
+
+  public type Nft = {
+    owner: Principal;
+    id: TokenId;
+    metadata: MetadataDesc;
+  };
+
+  public type TokenId = Nat64;
+
+  public type MetadataDesc = [MetadataPart];
+
+  public type MetadataPart = {
+    purpose: MetadataPurpose;
+    key_val_data: [MetadataKeyVal];
+    data: Blob;
+  };
+
+  public type MetadataPurpose = {
+    #Preview;
+    #Rendered;
+  };
+  
+  public type MetadataKeyVal = {
+    key: Text;
+    val: MetadataVal;
+  };
+
+  public type MetadataVal = {
+    #TextContent : Text;
+    #BlobContent : Blob;
+    #NatContent : Nat;
+    #Nat8Content: Nat8;
+    #Nat16Content: Nat16;
+    #Nat32Content: Nat32;
+    #Nat64Content: Nat64;
+    #PrincipalContent: Principal; // added
+    #TextArrayContent: [Text]; // added
+    #TextToTextAssocListContent: AssocList.AssocList<Text, Text>; // added
+  };
 }

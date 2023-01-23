@@ -1,5 +1,5 @@
 <script>
-  import { view } from "../stores.js"
+  import { view, username } from "../stores.js"
 
   let isExpanded = false
 
@@ -19,15 +19,26 @@
   const handleHome = () => {
     $view.current = $view.home
   }
+  const handleViewDaoData = () => {
+    $view.current = $view.daodata
+  }
+  const handleSignup = () => {
+    $view.current = $view.signup
+  }
 </script>
 
 <nav class:expanded={isExpanded} on:mouseover={() => mouseover()}>
   <ul>
     {#if isExpanded}
-      <li on:click={() => handleHome()}>🏠 Home</li>
-      <li on:click={() => handleView()}>🚀 View</li>
-      <li on:click={() => handleCreate()}>⭐️ Create</li>
-      <li on:click={() => handleVote()}>🗑 Vote</li>
+      <li on:click={() => handleHome()}>Home</li>
+      {#if $username}
+        <li on:click={() => handleView()}>Proposals</li>
+        <li on:click={() => handleCreate()}>Create</li>
+        <li on:click={() => handleVote()}>Vote</li>
+        <li on:click={() => handleViewDaoData()}>DAO Data</li>
+      {:else}
+        <li on:click={() => handleSignup()}>DAO Signup</li>
+      {/if}
     {/if}
   </ul>
 </nav>
@@ -38,7 +49,7 @@
     background-color: #262626;
     color: #a2b7c4;
     transition: ease-out 200ms;
-    width: 13vmin;
+    width: 18vmin;
     position: relative;
   }
 
@@ -48,7 +59,7 @@
     background-color: #4c4a4a;
     color: #ffffff;
     transition: ease-out 200ms;
-    width: 16vmin;
+    width: 26vmin;
   }
 
   ul {

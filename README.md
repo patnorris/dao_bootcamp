@@ -28,6 +28,47 @@ Deploy locally
 dfx deploy
 ```
 
+dfx deploy --argument "(record {
+ accounts = vec { record { owner = principal \"$ALICE\"; tokens = record { amount_e8s = 100_000_000 }; };
+                  record { owner = principal \"$BOB\"; tokens = record { amount_e8s = 100_000_000 };}; };
+ proposals = vec {};
+ system_params = record {
+     transfer_fee = record { amount_e8s = 10_000 };
+     proposal_vote_threshold = record { amount_e8s = 10_000_000 };
+     proposal_submission_deposit = record { amount_e8s = 10_000 };
+ };
+})"
+
+dfx deploy --argument "(record {
+ accounts = vec {};
+ proposals = vec {};
+ system_params = record {
+     transfer_fee = record { amount_e8s = 10_000 };
+     proposal_vote_threshold = record { amount_e8s = 10_000_000 };
+     proposal_submission_deposit = record { amount_e8s = 10_000 };
+ };
+})"
+
+dfx deploy --network ic --argument "(record {
+ accounts = vec {};
+ proposals = vec {};
+ system_params = record {
+     transfer_fee = record { amount_e8s = 10_000 };
+     proposal_vote_threshold = record { amount_e8s = 10_000_000 };
+     proposal_submission_deposit = record { amount_e8s = 10_000 };
+ };
+})"
+
+dfx deploy --network ic --wallet "$(dfx identity --network ic get-wallet)" --argument "(record {
+ accounts = vec {};
+ proposals = vec {};
+ system_params = record {
+     transfer_fee = record { amount_e8s = 10_000 };
+     proposal_vote_threshold = record { amount_e8s = 10_000_000 };
+     proposal_submission_deposit = record { amount_e8s = 10_000 };
+ };
+})"
+
 ## Live demo
 
 There are 2 versions of this app deployed on the IC. 

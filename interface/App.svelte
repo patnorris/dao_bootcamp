@@ -7,6 +7,8 @@
   import Vote from "./components/Vote.svelte"
   import View from "./components/View.svelte"
   import Create from "./components/Create.svelte"
+  import ViewDaoData from "./components/ViewDaoData.svelte"
+  import Signup from "./components/Signup.svelte"
 </script>
 
 <div class="App">
@@ -15,19 +17,23 @@
     <Sidebar />
     {#if $view.current === $view.home}
       <Home />
+    {:else if $view.current === $view.signup}
+      <Signup />
     {:else if $view.current === $view.view}
       <View />
     {:else if $view.current === $view.vote}
       <Vote />
     {:else if $view.current === $view.create}
       <Create />
+    {:else if $view.current === $view.daodata}
+      <ViewDaoData />
     {/if}
     <div class="styling" />
   </div>
 
   <footer>
     <p class="twitterfoot">
-      by <a href="https://twitter.com/iriasviel">Iri</a>
+      by <a href="https://twitter.com/thepatnorris">Pat</a>
     </p>
   </footer>
 </div>
@@ -82,7 +88,7 @@
   }
 
   .App-logo {
-    height: 14vmin;
+    height: 34vmin;
     pointer-events: none;
     transform: scale(1);
     animation: pulse 3s infinite;

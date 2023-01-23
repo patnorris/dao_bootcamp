@@ -1,0 +1,45 @@
+type StreamingStrategy = variant {
+                           Callback:
+                            record {
+                              callback: StreamingCallback;
+                              token: StreamingCallbackToken;
+                            };};
+type StreamingCallbackToken = 
+ record {
+   content_encoding: text;
+   index: nat;
+   key: text;
+ };
+type StreamingCallbackResponse = 
+ record {
+   body: blob;
+   token: opt StreamingCallbackToken;
+ };
+type StreamingCallback = func (StreamingCallbackToken) ->
+                          (StreamingCallbackResponse) query;
+type Response = 
+ record {
+   body: blob;
+   headers: vec HeaderField;
+   status_code: nat16;
+   streaming_strategy: opt StreamingStrategy;
+   upgrade: bool;
+ };
+type Request = 
+ record {
+   body: blob;
+   headers: vec HeaderField;
+   method: text;
+   url: text;
+ };
+type HeaderField = 
+ record {
+   text;
+   text;
+ };
+service : {
+  change_dao_text: (text) -> (text);
+  get_dao_text: () -> (text) query;
+  http_request: (Request) -> (Response) query;
+  whoami: () -> (principal) query;
+}

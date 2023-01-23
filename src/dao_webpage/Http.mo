@@ -21,7 +21,7 @@ module {
         headers            : [HeaderField];
         status_code        : Nat16;
         streaming_strategy : ?StreamingStrategy;
-        upgrade            : Bool;
+        upgrade            : ?Bool;
     };
 
     public type StreamingStrategy = {

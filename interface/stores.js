@@ -5,6 +5,8 @@ export const view = writable({
     view: 2,
     create: 3,
     vote: 4,
+    daodata: 5,
+    signup: 6,
     current: 1,
 });
 
@@ -15,4 +17,5 @@ export const proposaltoVote = writable({
 export const hasvoted = writable(false);
 
 export const principal = writable(null);
+export const username = writable(null);
 export const daoActor = writable(null);

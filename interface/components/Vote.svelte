@@ -1,7 +1,7 @@
 <script>
   import { proposaltoVote } from "../stores.js"
   import { hasvoted } from "../stores.js"
-  import mot from "../assets/mot.png"
+  import mot from "../assets/seagull_cruising.png"
   import { get } from "svelte/store"
   import { daoActor, principal } from "../stores"
 
@@ -13,9 +13,13 @@
   async function vote(thisid, votepayload) {
     let dao = get(daoActor)
     if (!dao) {
-      return 
+      return
     }
-    let res = await dao.vote(BigInt(thisid), votepayload)
+    let votePayload = {
+      vote: { yes: null },
+      proposal_id: BigInt(thisid),
+    }
+    let res = await dao.vote(votePayload)
     if (res.Ok) {
       return res.Ok
     } else {
@@ -25,7 +29,7 @@
   async function get_proposal(thisid) {
     let dao = get(daoActor)
     if (!dao) {
-      return 
+      return
     }
     let res = await dao.get_proposal(BigInt(thisid))
     if (res.length !== 0) {
@@ -40,10 +44,29 @@
   let promise = vote(voteid, choosenvote)
   let promise2 = get_proposal(id)
 
-  function handleVoteClick(payload) {
-    choosenvote = payload
-    voteid = id
-    promise = vote(voteid, choosenvote)
+  let error;
+  let proposalState = "";
+
+  async function handleVoteClick(payload) {
+    error = undefined;
+    document.getElementById("waitParagraph").removeAttribute("hidden");
+    let votePayload = {};
+    if (payload) {
+      votePayload.vote = { yes: null };
+      votePayload.proposal_id = BigInt(choosenproposal);
+    } else {
+      votePayload.vote = { no: null };
+      votePayload.proposal_id = BigInt(choosenproposal);
+    };
+    
+    let result = await $daoActor.vote(votePayload)
+
+    if (Object.keys(result)[0] === "err") {
+      error = result.err
+    } else {
+      proposalState = Object.keys(result.ok)[0]
+    }
+
     $hasvoted = true
   }
 
@@ -71,7 +94,7 @@
         placeholder="Input your proposal ID here"
       />
       <button on:click={setProposal(choosenproposal)}>Vote!</button>
-    {:else if $proposaltoVote.proposalID != "null"}
+    {:else if $proposaltoVote.proposalID !== "null" && choosenproposal !== ""}
       {#await promise2}
         <h1 class="slogan">Loading...</h1>
       {:then res}
@@ -81,10 +104,23 @@
           </h1>
           <div>
             <h1 class="slogan">Cast your vote:</h1>
-            <button on:click={() => handleVoteClick(true)}>Yes</button>
-            <button on:click={() => handleVoteClick(false)}>No</button>
+            <button on:click={async () => await handleVoteClick(true)}
+              >Yes</button
+            >
+            <button on:click={async () => await handleVoteClick(false)}
+              >No</button
+            >
+            <p id="waitParagraph" hidden style="color: white">...sending your vote</p>
             {#if $hasvoted === true}
-              {#await promise}
+              {#if error !== undefined}
+                <p style="color: red">{error}</p>
+              {:else}
+                <p style="color: white">
+                  Voted successfully! Current Proposal State: {proposalState}
+                </p>
+              {/if}
+
+              <!-- {#await promise}
                 <h1 class="slogan">Loading...</h1>
               {:then res2}
                 <p style="color: white">
@@ -92,7 +128,7 @@
                 </p>
               {:catch error}
                 <p style="color: red">{error.message}</p>
-              {/await}
+              {/await} -->
             {/if}
           </div>
           <button on:click={() => setProposal("null")}

@@ -9,6 +9,7 @@
   "dependencies": {
     "@dfinity/agent": "^0.15.1",
     "@dfinity/principal": "^0.15.1",
+    "@dfinity/candid": "^0.15.1",
     "flowbite-svelte": "^0.29.10",
     "svelte-heros": "^2.4.3"
   },
