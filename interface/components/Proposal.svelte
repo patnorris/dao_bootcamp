@@ -16,7 +16,7 @@
     <iframe id={post.id} srcdoc={post.proposal_text} title="Proposed Space HTML"></iframe>
   {:else if post.payload.method == "updateUserSpace"}
     <p>Update Community Space: {post.proposal_text}</p>
-    <iframe id={post.id} srcdoc={post.proposal_text} title="Proposed Space HTML"></iframe>
+    <iframe id={post.id} srcdoc={JSON.parse(post.proposal_text).updatedSpaceData} title="Proposed Space HTML"></iframe>
   {/if}
 </div>
 

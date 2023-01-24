@@ -16,6 +16,13 @@
 
 	let selected = "";
 
+  // Fields for proposalTypes Update Community Space 
+  let spaceId = "";
+  let updatedOwnerName = "";
+  let updatedOwnerContactInfo = "";
+  let updatedSpaceDescription = "";
+  let updatedSpaceName = "";
+
   let createProposalResult;
 
   async function create_proposal(proposalText) {
@@ -49,20 +56,21 @@
     } else if (selected.id == 3) { //"update_space"
       proposalPayload.method = "updateUserSpace";
       proposalPayload.canister_id = Principal.fromText("vee64-zyaaa-aaaai-acpta-cai");
+      let updateMetadataValuesInput = {
+        id: Number(spaceId),
+        updatedOwnerName,
+        updatedOwnerContactInfo,
+        updatedSpaceDescription,
+        updatedSpaceName,
+        updatedSpaceData: proposalText,
+      };
+      proposalText = JSON.stringify(updateMetadataValuesInput);
       var myblob = new Blob([proposalText], {
           type: 'text/plain'
       });
       let blobArray = await myblob.arrayBuffer();
       let blobUint = new Uint8Array(blobArray);
-      proposalPayload.message = [...blobUint]; //TODO: needs to be of type UpdateMetadataValuesInput
-      /* public type UpdateMetadataValuesInput = {
-        id: TokenId;
-        updatedOwnerName: Text;
-        updatedOwnerContactInfo: Text;
-        updatedSpaceDescription: Text;
-        updatedSpaceName: Text;
-        updatedSpaceData: Text;
-      }; */
+      proposalPayload.message = [...blobUint]; // Needs to be of type UpdateMetadataValuesInput
     } else {
       return;
     }
@@ -98,8 +106,30 @@
       </select>
       <input
         bind:value={choosenproposal}
-        placeholder="Input your proposal summary here"
+        placeholder="Input your proposal summary here (e.g. Webpage text, Space data)"
       />
+      {#if selected.id === 3}
+        <input
+          bind:value={spaceId}
+          placeholder="Input the id of the space you propose to update"
+        />
+        <input
+          bind:value={updatedOwnerName}
+          placeholder="Input the new owner name to be displayed"
+        />
+        <input
+          bind:value={updatedOwnerContactInfo}
+          placeholder="Input the new contact info to be displayed"
+        />
+        <input
+          bind:value={updatedSpaceName}
+          placeholder="Input the space's new proposed name"
+        />
+        <input
+          bind:value={updatedSpaceDescription}
+          placeholder="Input the space's new proposed description"
+        />
+      {/if}
       {#if (selected.id === 2 || selected.id === 3) && choosenproposal !== "Input your proposal"}
         <iframe srcdoc={choosenproposal} title="Proposed Space HTML"></iframe>
       {/if}

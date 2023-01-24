@@ -9,6 +9,11 @@ import ICRaw "mo:base/ExperimentalInternetComputer";
 import List "mo:base/List";
 import Time "mo:base/Time";
 import Array "mo:base/Array";
+import Text "mo:base/Text";
+import Nat32 "mo:base/Nat32";
+import Nat64 "mo:base/Nat64";
+import Char "mo:base/Char";
+import Debug "mo:base/Debug";
 
 import Types "./Types";
 import ICRC1 "./ICRC-1";
@@ -294,6 +299,9 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
         };
     }; */
 
+    stable var dev_errors : List.List<Text> = List.nil();
+    public query func get_dev_errors() : async [Text] {return List.toArray(dev_errors)};
+
     /// Execute all accepted proposals
     func execute_accepted_proposals() : async () {
         let accepted_proposals = Trie.filter(proposals, func (_ : Nat, proposal : Types.Proposal) : Bool = proposal.state == #accepted);
@@ -305,9 +313,75 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
         for ((id, proposal) in Trie.iter(accepted_proposals)) {
             switch (await execute_proposal(proposal)) {
             case (#ok) { update_proposal_state(proposal, #succeeded); };
-            case (#err(err)) { update_proposal_state(proposal, #failed(err)); };
+            case (#err(err)) { 
+                if (Text.contains(err, #text "development___err42")) {
+                    dev_errors := List.push(err, dev_errors);
+                } 
+                else {
+                    dev_errors := List.push(err, dev_errors);
+                    update_proposal_state(proposal, #failed(err));
+                }; 
+            };
             };
         };
+    };
+
+    func textToNat64(txt : Text) : Nat64 {
+        assert(txt.size() > 0);
+        let chars = txt.chars();
+
+        var num : Nat = 0;
+        for (v in chars){
+            if (v != '\'') {
+                let charToNum = Nat32.toNat(Char.toNat32(v)-48);
+                assert(charToNum >= 0 and charToNum <= 9);
+                num := num * 10 +  charToNum;
+            };     
+        };
+
+        Nat64.fromNat(num);
+    };
+
+    var updatedSpaceData : Text = "initial";
+    stable var updatedSpaceName : Text = "initial";
+    stable var updatedSpaceDescription : Text = "initial";
+    stable var updatedOwnerContactInfo : Text = "initial";
+    stable var updatedOwnerName : Text = "initial";
+    stable var spaceId : Text = "initial";
+
+    stable var proposalTextExecuted : Text = "initial";
+
+    //public query func get_update_params_debug() : async [Text] { [proposalTextExecuted, spaceId, updatedOwnerName, updatedOwnerContactInfo, updatedSpaceDescription, updatedSpaceName, updatedSpaceData] };
+
+    public query func test_extracting_from_string(string : Text) : async [Text] {
+        var remainer : [Text] = Iter.toArray(Text.tokens(string, #text("updatedSpaceData\":\"")));
+        Debug.print(debug_show(remainer));
+        updatedSpaceData := Iter.toArray(Text.tokens(remainer[1], #text("\"}")))[0];
+        Debug.print(debug_show(updatedSpaceData));
+        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedSpaceName\":\"")));
+        Debug.print(debug_show(remainer));
+        updatedSpaceName := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+        Debug.print(debug_show(updatedSpaceName));
+        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedSpaceDescription\":\"")));
+        Debug.print(debug_show(remainer));
+        updatedSpaceDescription := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+        Debug.print(debug_show(updatedSpaceDescription));
+        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedOwnerContactInfo\":\"")));
+        Debug.print(debug_show(remainer));
+        updatedOwnerContactInfo := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+        Debug.print(debug_show(updatedOwnerContactInfo));
+        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedOwnerName\":\"")));
+        Debug.print(debug_show(remainer));
+        updatedOwnerName := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+        Debug.print(debug_show(updatedOwnerName));
+        remainer := Iter.toArray(Text.tokens(remainer[0], #text("id\":")));
+        Debug.print(debug_show(remainer));
+        spaceId := Iter.toArray(Text.tokens(remainer[1], #text(",")))[0];
+        Debug.print(debug_show(spaceId));
+        let id = textToNat64(spaceId);
+        Debug.print(debug_show(id));
+                        
+        return [updatedSpaceData, updatedSpaceName, updatedSpaceDescription, updatedOwnerContactInfo, updatedOwnerName, spaceId];
     };
 
     /// Execute the given proposal
@@ -321,11 +395,44 @@ shared actor class DAO(init : Types.BasicDaoStableStorage) = Self {
                     ignore await spaces_canister.createSpace(proposal.proposal_text);
                     #ok
                 } else if (payload.method == "updateUserSpace") {
-                    #err("Not supported yet")
-                    // TODO
-                    /* let spaces_canister : Spaces.Self = actor ("vee64-zyaaa-aaaai-acpta-cai");
-                    ignore await spaces_canister.updateUserSpace(proposal.proposal_text);
-                    #ok */
+                    // proposal.proposal_text for updateUserSpace looks like:
+                     /* {
+                        id: spaceId,
+                        updatedOwnerName,
+                        updatedOwnerContactInfo,
+                        updatedSpaceDescription,
+                        updatedSpaceName,
+                        updatedSpaceData: proposalText,
+                     } */
+                    proposalTextExecuted := proposal.proposal_text;
+                    try {
+                        var remainer : [Text] = Iter.toArray(Text.tokens(proposal.proposal_text, #text("updatedSpaceData\":\"")));
+                        updatedSpaceData := Iter.toArray(Text.tokens(remainer[1], #text("\"}")))[0];
+                        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedSpaceName\":\"")));
+                        updatedSpaceName := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+                        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedSpaceDescription\":\"")));
+                        updatedSpaceDescription := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+                        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedOwnerContactInfo\":\"")));
+                        updatedOwnerContactInfo := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+                        remainer := Iter.toArray(Text.tokens(remainer[0], #text("updatedOwnerName\":\"")));
+                        updatedOwnerName := Iter.toArray(Text.tokens(remainer[1], #text("\",")))[0];
+                        remainer := Iter.toArray(Text.tokens(remainer[0], #text("id\":")));
+                        spaceId := Iter.toArray(Text.tokens(remainer[1], #text(",")))[0];
+                        let updateMetadataValuesInput = {
+                            id = textToNat64(spaceId);
+                            updatedOwnerName = updatedOwnerName;
+                            updatedOwnerContactInfo = updatedOwnerContactInfo;
+                            updatedSpaceDescription = updatedSpaceDescription;
+                            updatedSpaceName = updatedSpaceName;
+                            updatedSpaceData = updatedSpaceData;
+                        };
+
+                        let spaces_canister : Spaces.Self = actor ("vee64-zyaaa-aaaai-acpta-cai");
+                        ignore await spaces_canister.updateUserSpace(updateMetadataValuesInput);
+                        #ok
+                    }
+                    //catch (e) { #err(Error.message e # "development___err42") };
+                    catch (e) { #err(Error.message e) };
                 } else {
                     #err("Not supported")
                 };
